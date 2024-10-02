@@ -103,7 +103,7 @@ def test__get_top_articles__return__the_title_with_most_comments__when_limit_is_
 
     response = get_top_articles(1)
 
-    assert response == most_comment_article.title
+    assert response == most_comment_article["title"]
 
 
 def test__get_top_articles__return__the_title_with_most_comments_and_most_recent__when_limit_is_one(mocker, article_fixture):
@@ -119,25 +119,28 @@ def test__get_top_articles__return__the_title_with_most_comments_and_most_recent
 
     response = get_top_articles(1)
 
-    assert response == most_recent_article.title
+    assert response == most_recent_article["title"]
 
 
 def test__clean_article_title__returns_unchanged_article__when_title_exists(article_fixture):
-    article = article_fixture()
+    article_dict = article_fixture()
+    article = Article(**article_dict)
     cleaned_article = clean_article_title(article=article)
     assert article == cleaned_article
 
 
 def test__clean_article_title__returns_cleaned_article__when_no_title_is_present_and_story_title_is_present(article_fixture):
-    article = article_fixture(title=None)
+    article_dict = article_fixture(title=None)
+    article = Article(**article_dict)
     cleaned_article = clean_article_title(article=article)
     assert article == cleaned_article
 
 
 def test__clean_article_title__returns_none__when_no_title_or_story_title_is_present_in_article(article_fixture):
-    article = article_fixture(title=None, story_title=None)
+    article_dict = article_fixture(title=None, story_title=None)
+    article = Article(**article_dict)
     cleaned_article = clean_article_title(article=article)
-    assert cleaned_article == None
+    assert cleaned_article is None
 
 
 if __name__ == "__main__":
