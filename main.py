@@ -70,7 +70,7 @@ def get_all_articles(limit):
     while len(articles) < limit:
         response = requests.get(API_URL.format(page)).json()
         if limit > response["total"]:
-            raise Exception(f"Limit is greater than total articles, total articles: {response['total']}")
+            limit = response["total"]
         articles.extend(response["data"])
         page += 1
         if page > response["total_pages"]:
@@ -164,7 +164,7 @@ def test__sort_articles__returns_sorted_articles_by_created_at(article_fixture):
     assert sorted_articles == sorted(articles_tuple, key=lambda value: value[2], reverse=True)
 
 
-def test__get_all_articles__returns_list_of_articles__when_limit_is_10():
+def test__get_all_articles__returns_list_of_article_titles__when_limit_is_10():
     articles = get_all_articles(10)
 
     assert isinstance(articles, list)
@@ -172,7 +172,7 @@ def test__get_all_articles__returns_list_of_articles__when_limit_is_10():
     assert len(articles) == 10
 
 
-def test__get_all_articles__returns_list_of_articles__when_limit_is_api_max():
+def test__get_all_articles__returns_list_of_article_titles__when_limit_is_api_max():
     total = requests.get(API_URL.format(1)).json()["total"]
 
     articles = get_all_articles(total)
@@ -182,19 +182,38 @@ def test__get_all_articles__returns_list_of_articles__when_limit_is_api_max():
     assert len(articles) == total
 
 
-def test__get_top_articles__returns_list_of_articles__when_limit_is_10():
+def test__get_top_articles__returns_list_of_article_titles__when_limit_is_10():
     articles = get_top_articles(10)
     assert isinstance(articles, list)
     assert all(isinstance(article, str) for article in articles)
     assert len(articles) == 10
 
 
-def test__get_top_articles__returns_list_of_articles__when_limit_is_api_max():
+def test__get_top_article_titles__returns_list_of_article_titles__when_limit_is_api_max():
     total = requests.get(API_URL.format(1)).json()["total"]
     articles = get_all_articles(limit=total)
     ignored_articles = sum(1 for article in articles if not clean_article_title(Article(**article)))
 
     articles = get_top_articles(total)
+
+    assert isinstance(articles, list)
+    assert all(isinstance(article, str) for article in articles)
+    assert len(articles) == (total - ignored_articles)
+
+
+def test__get_top_article_titles__returns_list_of_article_titles__when_limit_is_0():
+    articles = get_top_articles(0)
+    assert isinstance(articles, list)
+    assert all(isinstance(article, str) for article in articles)
+    assert len(articles) == 0
+
+
+def test__get_top_articles__returns_list_of_article_titles__when_limit_is_greater_than_api_max():
+    total = requests.get(API_URL.format(1)).json()["total"]
+    articles = get_all_articles(limit=total)
+    ignored_articles = sum(1 for article in articles if not clean_article_title(Article(**article)))
+
+    articles = get_top_articles(total + 1)
 
     assert isinstance(articles, list)
     assert all(isinstance(article, str) for article in articles)
