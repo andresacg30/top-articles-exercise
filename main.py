@@ -70,7 +70,7 @@ def get_all_articles(limit):
     while len(articles) < limit:
         response = requests.get(API_URL.format(page)).json()
         if limit > response["total"]:
-            raise Exception("Limit is greater than total articles")
+            raise Exception(f"Limit is greater than total articles, total articles: {response['total']}")
         articles.extend(response["data"])
         page += 1
         if page > response["total_pages"]:
