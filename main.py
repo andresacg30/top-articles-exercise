@@ -3,7 +3,7 @@ import pytest
 import random
 import requests
 from faker import Faker
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -23,24 +23,30 @@ class Article:
     story_url: Optional[str]
     parent_id: Optional[int]
     created_at: datetime.datetime
+    comment_text: Optional[str] = None
+
+    def __post_init__(self):
+        self.clean_article_number_of_comments()
+
+    def clean_article_number_of_comments(self):
+        if self.num_comments is None:
+            self.num_comments = 0
 
 
 # Functions
 
 
 def get_top_articles(limit):
-    response = requests.get(API_URL.format(limit)).json()
-    cleaned_articles = []
-    for record in response["data"]:
+    articles = get_all_articles(limit=limit)
+    cleaned_articles_tuples = []
+    for record in articles:
         article = Article(**record)
         cleaned_article = clean_article_title(article=article)
-        cleaned_article = clean_article_number_of_comments(article=article)
         if not cleaned_article:
-            pass
-        cleaned_articles.append((cleaned_article.title, cleaned_article.num_comments, cleaned_article.created_at))
-    sorted_articles_by_comments = sorted(cleaned_articles, key=lambda value: value[1], reverse=True)
-    sorted_articles = sorted(sorted_articles_by_comments, key=lambda value: value[2], reverse=True)
-    return [article.title for _ in sorted_articles_by_comments[::limit]]
+            continue
+        cleaned_articles_tuples.append((cleaned_article.title, cleaned_article.num_comments, cleaned_article.created_at))
+    sorted_articles = sort_articles(cleaned_articles_tuples)
+    return [article[0] for article in sorted_articles[:limit]]
 
 
 def clean_article_title(article: Article):
@@ -51,10 +57,26 @@ def clean_article_title(article: Article):
     return article
 
 
-def clean_article_number_of_comments(article: Article):
-    if article.num_comments is None:
-        article.num_comments = 0
-    return article
+def sort_articles(articles):
+    sorted_articles_by_comments = sorted(articles, key=lambda value: value[1], reverse=True)
+    sorted_articles = sorted(sorted_articles_by_comments, key=lambda value: value[2], reverse=True)
+    return sorted_articles
+
+
+def get_all_articles(limit):
+    articles = []
+    page = 1
+
+    while len(articles) < limit:
+        response = requests.get(API_URL.format(page)).json()
+        if limit > response["total"]:
+            raise Exception("Limit is greater than total articles")
+        articles.extend(response["data"])
+        page += 1
+        if page > response["total_pages"]:
+            break
+
+    return articles
 
 
 # Tests
@@ -73,7 +95,8 @@ def article_fixture():
         story_title=fake.sentences(1)[0],
         story_url=fake.url(),
         parent_id=fake.uuid4(),
-        created_at=fake.date_time()
+        created_at=fake.date_time(),
+        comment_text=fake.sentences(1)[0],
     ):
         return {
             "url": url,
@@ -85,6 +108,7 @@ def article_fixture():
             "story_url": story_url,
             "parent_id": parent_id,
             "created_at": created_at,
+            "comment_text": comment_text,
         }
     yield create_article
 
@@ -92,56 +116,90 @@ def article_fixture():
 def test__get_top_articles__returns_a_list_of_string():
     response = get_top_articles(1)
     assert isinstance(response, list)
-
-
-def test__get_top_articles__return__the_title_with_most_comments__when_limit_is_one(mocker, article_fixture):
-    list_of_articles = [article_fixture() for _ in range(10)]
-    most_comment_article = article_fixture(num_comments=20, title="Title")
-    list_of_articles.append(most_comment_article)
-    json_response = mocker.patch("requests.get")
-    json_response.return_value.json.return_value = {"data": list_of_articles}
-
-    response = get_top_articles(1)
-
-    assert response == most_comment_article["title"]
-
-
-def test__get_top_articles__return__the_title_with_most_comments_and_most_recent__when_limit_is_one(mocker, article_fixture):
-    list_of_articles = [article_fixture() for _ in range(10)]
-    yesterdays_date = datetime.datetime.now() - datetime.timedelta(days=1)
-    todays_date = datetime.datetime.now()
-    most_comment_article = article_fixture(num_comments=20, title="Title", created_at=yesterdays_date)
-    most_recent_article = article_fixture(num_comments=20, title="Title Most Recent", created_at=todays_date)
-    list_of_articles.append(most_comment_article)
-    list_of_articles.append(most_recent_article)
-    json_response = mocker.patch("requests.get")
-    json_response.return_value.json.return_value = {"data": list_of_articles}
-
-    response = get_top_articles(1)
-
-    assert response == most_recent_article["title"]
+    assert all(isinstance(article, str) for article in response)
 
 
 def test__clean_article_title__returns_unchanged_article__when_title_exists(article_fixture):
     article_dict = article_fixture()
     article = Article(**article_dict)
+
     cleaned_article = clean_article_title(article=article)
+
     assert article == cleaned_article
 
 
 def test__clean_article_title__returns_cleaned_article__when_no_title_is_present_and_story_title_is_present(article_fixture):
     article_dict = article_fixture(title=None)
     article = Article(**article_dict)
+
     cleaned_article = clean_article_title(article=article)
+
     assert article == cleaned_article
 
 
 def test__clean_article_title__returns_none__when_no_title_or_story_title_is_present_in_article(article_fixture):
     article_dict = article_fixture(title=None, story_title=None)
     article = Article(**article_dict)
+
     cleaned_article = clean_article_title(article=article)
+
     assert cleaned_article is None
 
 
+def test__sort_articles__returns_sorted_articles_by_comments(article_fixture):
+    articles = [article_fixture() for _ in range(10)]
+    articles_tuple = [(article["title"], article["num_comments"], article["created_at"]) for article in articles]
+
+    sorted_articles = sort_articles(articles_tuple)
+
+    assert sorted_articles == sorted(articles_tuple, key=lambda value: value[1], reverse=True)
+
+
+def test__sort_articles__returns_sorted_articles_by_created_at(article_fixture):
+    articles = [article_fixture() for _ in range(10)]
+    articles_tuple = [(article["title"], article["num_comments"], article["created_at"]) for article in articles]
+
+    sorted_articles = sort_articles(articles_tuple)
+
+    assert sorted_articles == sorted(articles_tuple, key=lambda value: value[2], reverse=True)
+
+
+def test__get_all_articles__returns_list_of_articles__when_limit_is_10():
+    articles = get_all_articles(10)
+
+    assert isinstance(articles, list)
+    assert all(isinstance(article, dict) for article in articles)
+    assert len(articles) == 10
+
+
+def test__get_all_articles__returns_list_of_articles__when_limit_is_api_max():
+    total = requests.get(API_URL.format(1)).json()["total"]
+
+    articles = get_all_articles(total)
+
+    assert isinstance(articles, list)
+    assert all(isinstance(article, dict) for article in articles)
+    assert len(articles) == total
+
+
+def test__get_top_articles__returns_list_of_articles__when_limit_is_10():
+    articles = get_top_articles(10)
+    assert isinstance(articles, list)
+    assert all(isinstance(article, str) for article in articles)
+    assert len(articles) == 10
+
+
+def test__get_top_articles__returns_list_of_articles__when_limit_is_api_max():
+    total = requests.get(API_URL.format(1)).json()["total"]
+    articles = get_all_articles(limit=total)
+    ignored_articles = sum(1 for article in articles if not clean_article_title(Article(**article)))
+
+    articles = get_top_articles(total)
+
+    assert isinstance(articles, list)
+    assert all(isinstance(article, str) for article in articles)
+    assert len(articles) == (total - ignored_articles)
+
+
 if __name__ == "__main__":
-    print(get_top_articles(2))
+    print(get_top_articles(int(input("Enter the number of article titles you want to retrieve: "))))
